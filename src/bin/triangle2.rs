@@ -1,6 +1,5 @@
 use ash::util::*;
 use ash::vk;
-use examples::*;
 use std::default::Default;
 use std::ffi::CString;
 use std::io::Cursor;
