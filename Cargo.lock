@@ -275,6 +275,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "directx_math"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7fb5024972c62801a84a889ecf1bbcd4cba13e6bcee64b04531f3588d167ce4"
+
+[[package]]
 name = "dlib"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,6 +788,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "ash-window",
+ "directx_math",
  "image",
  "winit",
 ]

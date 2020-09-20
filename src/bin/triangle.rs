@@ -5,6 +5,7 @@ use std::ffi::CString;
 use std::io::Cursor;
 use std::mem;
 use std::mem::align_of;
+use rt_vk_example::*;
 
 #[derive(Clone, Debug, Copy)]
 struct Vertex {
@@ -14,7 +15,11 @@ struct Vertex {
 
 fn main() 
 {
-    let base = ExampleBase::new(1920, 1080);
+    let base = InstanceBase::new(InstanceCreateInfo {
+        window_width: 1920,
+        window_height: 1090,
+        app_name: String::from("triangle"),
+    });
 
     // attachment
     let render_attachment = 
@@ -257,6 +262,116 @@ fn main()
             .unwrap();
     }
     //
+    let shader_root_path = String::from("../../shader/");
+    // glsl shader module load func
+    let f_shader_mod = |glsl_path: &str| {
+        let path = shader_root_path.clone() + glsl_path;
+        let bytes = std::fs::read(&path).expect(&format!("open file {} failed", path));
+        let mut spv_file = Cursor::new(bytes);
+        let code = read_spv(&mut spv_file)
+            .expect("Failed to read shader spv file");
+        let ci = vk::ShaderModuleCreateInfo::builder()
+            .code(&code);
+        unsafe {
+            base.device
+                .create_shader_module(&ci, None)
+                .expect("Vertex shader module error")
+        }
+    };
+    // vert shader
+    let vert_smod= f_shader_mod("triangle/triangle.vert.spv");
+    // frag shader
+    let frag_smod = f_shader_mod("triangle/triangle.frag.spv");
+    // shader stage create info
+    let shader_state_ci;
+    {
+        let shader_entry_name = CString::new("main").unwrap();
+        shader_state_ci = [
+            vk::PipelineShaderStageCreateInfo {
+                module: vert_smod,
+                p_name: shader_entry_name.as_ptr(),
+                stage: vk::ShaderStageFlags::VERTEX,
+                ..Default::default()
+            },
+            vk::PipelineShaderStageCreateInfo {
+                module: frag_smod,
+                p_name: shader_entry_name.as_ptr(),
+                stage: vk::ShaderStageFlags::FRAGMENT,
+                ..Default::default()
+            }
+        ]
+    }
+    // vert input binding desc
+    let vert_input_binding_desc = [
+        vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: mem::size_of::<Vertex>() as u32,
+            input_rate: vk::VertexInputRate::VERTEX,
+        }
+    ];
+    // vert input attr desc
+    let vert_input_attr_desc = [
+        vk::VertexInputAttributeDescription {
+            location: 0,
+            binding: 0,
+            format: vk::Format::R32G32_SFLOAT,
+            offset: offset_of!(Vertex, pos) as u32,
+            ..Default::default()
+        },
+        vk::VertexInputAttributeDescription {
+            location: 1,
+            binding: 0,
+            format: vk::Format::R32G32B32A32_SFLOAT,
+            offset: offset_of!(Vertex, color) as u32,
+            ..Default::default()
+        }
+    ];
+    // create graphic pipeline
+    let graphic_pipelines;
+    {
+        let vert_input_state_info = vk::PipelineVertexInputStateCreateInfo {
+            vertex_attribute_description_count: vert_input_attr_desc.len() as u32,
+            p_vertex_attribute_descriptions: vert_input_attr_desc.as_ptr(),
+            vertex_binding_description_count: vert_input_binding_desc.len() as u32,
+            p_vertex_binding_descriptions: vert_input_binding_desc.as_ptr(),
+            ..Default::default()
+        };
+
+        let vert_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo {
+            topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+            ..Default::default()
+        };
+
+        let viewports = [vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: base.surface_resolution.width as f32,
+            height: base.surface_resolution.height as f32,
+            min_depth: 0.0,
+            max_depth: 1.0
+        }];
+        let scissors = [vk::Rect2D {
+            offset: vk::Offset2D {x:0, y:0},
+            extent: base.surface_resolution,
+        }];
+        let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
+            .scissors(&scissors)
+            .viewports(&viewports);
+        
+    }
+
+
+
+
+    
+
+
+
+
+
+    
+
+    
+
 
 }
-

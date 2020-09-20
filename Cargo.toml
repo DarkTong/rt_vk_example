@@ -7,7 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-winit = "0.19.5"
-image = "0.10.4"
 ash = "0.31.0"
 ash-window = "0.4"
+directx_math = "0.2.0"
+image = "0.10.4"
+winit = "0.19.5"
