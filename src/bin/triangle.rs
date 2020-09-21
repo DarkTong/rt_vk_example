@@ -5,6 +5,7 @@ use std::ffi::CString;
 use std::io::Cursor;
 use std::mem;
 use std::mem::align_of;
+use std::path::PathBuf;
 use rt_vk_example::*;
 
 #[derive(Clone, Debug, Copy)]
@@ -88,9 +89,9 @@ fn main()
     }
 
     // frame buffer
-    let frame_buffer;
+    let frame_buffers;
     {
-        frame_buffer = base
+        frame_buffers = base
             .present_image_views
             .iter()
             .map(|&present_image_view| {
@@ -262,11 +263,11 @@ fn main()
             .unwrap();
     }
     //
-    let shader_root_path = String::from("../../shader/");
+    let shader_root_path = String::from("shader/");
     // glsl shader module load func
     let f_shader_mod = |glsl_path: &str| {
         let path = shader_root_path.clone() + glsl_path;
-        let bytes = std::fs::read(&path).expect(&format!("open file {} failed", path));
+        let bytes = std::fs::read(&path).expect(&format!("open file {:?} failed", PathBuf::from(&path)));
         let mut spv_file = Cursor::new(bytes);
         let code = read_spv(&mut spv_file)
             .expect("Failed to read shader spv file");
@@ -283,10 +284,10 @@ fn main()
     // frag shader
     let frag_smod = f_shader_mod("triangle/triangle.frag.spv");
     // shader stage create info
-    let shader_state_ci;
+    let shader_stage_ci;
     {
         let shader_entry_name = CString::new("main").unwrap();
-        shader_state_ci = [
+        shader_stage_ci = [
             vk::PipelineShaderStageCreateInfo {
                 module: vert_smod,
                 p_name: shader_entry_name.as_ptr(),
@@ -326,6 +327,19 @@ fn main()
             ..Default::default()
         }
     ];
+    let viewports = [vk::Viewport {
+        x: 0.0,
+        y: 0.0,
+        width: base.surface_resolution.width as f32,
+        height: base.surface_resolution.height as f32,
+        min_depth: 0.0,
+        max_depth: 1.0
+    }];
+    let scissors = [vk::Rect2D {
+        offset: vk::Offset2D {x:0, y:0},
+        extent: base.surface_resolution,
+    }];
+    let pipeline_layout;
     // create graphic pipeline
     let graphic_pipelines;
     {
@@ -342,36 +356,209 @@ fn main()
             ..Default::default()
         };
 
-        let viewports = [vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: base.surface_resolution.width as f32,
-            height: base.surface_resolution.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0
-        }];
-        let scissors = [vk::Rect2D {
-            offset: vk::Offset2D {x:0, y:0},
-            extent: base.surface_resolution,
-        }];
+
         let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
             .scissors(&scissors)
             .viewports(&viewports);
+        let rasterization_info = vk::PipelineRasterizationStateCreateInfo {
+            front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+            line_width: 1.0,
+            polygon_mode: vk::PolygonMode::FILL,
+            ..Default::default()
+        };
+        let multisample_state_info = vk::PipelineMultisampleStateCreateInfo {
+            rasterization_samples: vk::SampleCountFlags::TYPE_1,
+            ..Default::default()
+        };
+        let noop_stencil_state = vk::StencilOpState {
+            fail_op: vk::StencilOp::KEEP,
+            pass_op: vk::StencilOp::KEEP,
+            depth_fail_op: vk::StencilOp::KEEP,
+            compare_op: vk::CompareOp::ALWAYS,
+            ..Default::default()
+        };
+        let depth_state_info = vk::PipelineDepthStencilStateCreateInfo {
+            depth_test_enable: 1,
+            depth_write_enable: 1,
+            depth_compare_op: vk::CompareOp::LESS_OR_EQUAL,
+            front: noop_stencil_state,
+            back: noop_stencil_state,
+            max_depth_bounds: 1.0,
+            ..Default::default()
+        };
+        let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
+            blend_enable: 0,
+            src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
+            dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+            color_blend_op: vk::BlendOp::ADD,
+            src_alpha_blend_factor: vk::BlendFactor::ZERO,
+            dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+            alpha_blend_op: vk::BlendOp::ADD,
+            color_write_mask: vk::ColorComponentFlags::all(),
+        }];
+        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
+        .logic_op(vk::LogicOp::CLEAR)
+        .attachments(&color_blend_attachment_states);
+        let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state_info =
+            vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state);
+        let layout_create_info = vk::PipelineLayoutCreateInfo::default();
+        unsafe {
+            pipeline_layout = base
+                .device
+                .create_pipeline_layout(&layout_create_info, None)
+                .unwrap();
+        } 
+        let graphic_pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+            .stages(&shader_stage_ci)
+            .vertex_input_state(&vert_input_state_info)
+            .input_assembly_state(&vert_input_assembly_state_info)
+            .viewport_state(&viewport_state_info)
+            .rasterization_state(&rasterization_info)
+            .multisample_state(&multisample_state_info)
+            .depth_stencil_state(&depth_state_info)
+            .color_blend_state(&color_blend_state)
+            .dynamic_state(&dynamic_state_info)
+            .layout(pipeline_layout)
+            .render_pass(render_pass);
         
+        unsafe {
+            graphic_pipelines = base
+                .device
+                .create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    &[graphic_pipeline_info.build()],
+                    None,
+                )
+                .expect("Unable to create graphics pipeline");
+        }
     }
+    let graphic_pipeline = graphic_pipelines[0];
 
+    // render loop
+    base.render_loop(|| {
+        let present_index;
+        unsafe {
+            let (_present_index, _) = base
+                .swapchain_loader
+                .acquire_next_image(
+                    base.swapchain,
+                    std::u64::MAX, 
+                    base.present_complete_semaphore, 
+                    vk::Fence::null())
+                .unwrap();
+            present_index = _present_index;
+        }
 
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 0.0],
+                },
+            },
+            vk::ClearValue {
+               depth_stencil: vk::ClearDepthStencilValue {
+                   depth: 1.0,
+                   stencil: 0
+               } 
+            }
+        ];
+           
+        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(render_pass)
+            .framebuffer(frame_buffers[present_index as usize])
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D{ x: 0, y: 0},
+                extent: base.surface_resolution,
+            })
+            .clear_values(&clear_values);
 
+        record_submit_commandbuffer(
+            &base.device, 
+            base.draw_command_buffer, 
+            base.present_queue, 
+            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT], 
+            &[base.present_complete_semaphore], 
+            &[base.rendering_complete_semaphore], 
+            |device, draw_command_buffer| unsafe {
+                device.cmd_begin_render_pass(
+                    draw_command_buffer, 
+                    &render_pass_begin_info, 
+                    vk::SubpassContents::INLINE
+                );
+                device.cmd_bind_pipeline(
+                    draw_command_buffer, 
+                    vk::PipelineBindPoint::GRAPHICS, 
+                    graphic_pipeline
+                );
+                device.cmd_set_viewport(
+                    draw_command_buffer, 
+                    0,
+                    &viewports,
+                );
+                device.cmd_set_scissor(
+                    draw_command_buffer, 
+                    0,
+                    &scissors,
+                );
+                device.cmd_bind_vertex_buffers(
+                    draw_command_buffer, 
+                    0,
+                    &[vertex_input_buffer],
+                    &[0]
+                );
+                device.cmd_bind_index_buffer(
+                    draw_command_buffer, 
+                    index_buffer, 
+                    0,
+                    vk::IndexType::UINT32
+                );
+                device.cmd_draw_indexed(
+                    draw_command_buffer, 
+                    index_buffer_data.len() as u32, 
+                    1,
+                    0,
+                    0,
+                    1
+                );
+                device.cmd_end_render_pass(draw_command_buffer);
+            },
+        );
 
-    
+        let wait_semaphore = [base.rendering_complete_semaphore];
+        let swapchains = [base.swapchain];
+        let image_indices = [present_index];
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&wait_semaphore)
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+        
+        unsafe {
+            base.swapchain_loader
+                .queue_present(base.present_queue, &present_info)
+                .unwrap();
+        }
 
+    });
 
-
-
-
-    
-
-    
-
+    unsafe {
+        base.device.device_wait_idle().unwrap();
+        for pipeline in graphic_pipelines {
+            base.device.destroy_pipeline(pipeline, None);
+        }
+        base.device.destroy_pipeline_layout(pipeline_layout, None);
+        base.device
+            .destroy_shader_module(vert_smod, None);
+        base.device
+            .destroy_shader_module(frag_smod, None);
+        base.device.free_memory(index_buffer_memory, None);
+        base.device.destroy_buffer(index_buffer, None);
+        base.device.free_memory(vertex_input_buffer_memory, None);
+        base.device.destroy_buffer(vertex_input_buffer, None);
+        for framebuffer in frame_buffers {
+            base.device.destroy_framebuffer(framebuffer, None);
+        }
+        base.device.destroy_render_pass(render_pass, None);
+    }
 
 }
