@@ -300,7 +300,7 @@ fn main()
                 ..Default::default()
             }
         ]
-    }
+    } 
     // vert input binding desc
     let vert_input_binding_desc = [
         vk::VertexInputBindingDescription {
