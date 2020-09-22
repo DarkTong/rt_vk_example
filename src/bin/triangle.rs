@@ -37,8 +37,7 @@ fn main()
             format: vk::Format::D16_UNORM,
             samples: vk::SampleCountFlags::TYPE_1,
             load_op: vk::AttachmentLoadOp::CLEAR,
-            store_op: vk::AttachmentStoreOp::STORE,
-            initial_layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            initial_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             final_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             ..Default::default()
         },
@@ -54,7 +53,7 @@ fn main()
 
         let depth_attachment_refs = vk::AttachmentReference {
             attachment: 1,
-            layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
 
         let subpass1 = vk::SubpassDescription::builder()
@@ -95,7 +94,7 @@ fn main()
             .present_image_views
             .iter()
             .map(|&present_image_view| {
-                let framebuffer_attachment = [present_image_view];
+                let framebuffer_attachment = [present_image_view, base.depth_image_view];
                 let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
                     .render_pass(render_pass)
                     .attachments(&framebuffer_attachment)
@@ -284,9 +283,9 @@ fn main()
     // frag shader
     let frag_smod = f_shader_mod("triangle/triangle.frag.spv");
     // shader stage create info
+    let shader_entry_name = CString::new("main").unwrap();
     let shader_stage_ci;
     {
-        let shader_entry_name = CString::new("main").unwrap();
         shader_stage_ci = [
             vk::PipelineShaderStageCreateInfo {
                 module: vert_smod,
