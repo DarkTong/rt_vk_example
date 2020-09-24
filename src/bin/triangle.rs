@@ -6,8 +6,8 @@ use std::io::Cursor;
 use std::mem;
 use std::mem::align_of;
 use std::path::PathBuf;
-use rt_vk_example::base::world::*;
 use rt_vk_example::offset_of;
+use rt_vk_example::base::world::*;
 
 #[derive(Clone, Debug, Copy)]
 struct Vertex {

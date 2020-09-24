@@ -11,6 +11,8 @@ use ash::{vk, Device, Entry, Instance};
 use std::ffi::{CString, CStr};
 use std::cell::RefCell;
 use std::borrow::Cow;
+use super::pso::*;
+use super::loader;
 
 pub struct InstanceBase {
     pub events_loop: RefCell<winit::EventsLoop>,
@@ -504,6 +506,15 @@ impl InstanceBase {
         }
 
     }
+
+    pub fn create_pipeline_state_object(&self, desc: PipelineStateObjectDescriptor
+    ) -> Box<PipelineStateObject>
+    {
+        Box::new(PipelineStateObject {
+
+        })
+    }
+
 }
 
 impl Drop for InstanceBase {
