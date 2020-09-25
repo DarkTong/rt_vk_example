@@ -6,7 +6,8 @@ use ash::extensions::{
     khr::{Surface, Swapchain},
 };
 
-pub use ash::version::{DeviceV1_0, EntryV1_0, InstanceV1_0};
+pub use ash::version::*;
+pub use ash::version::DeviceV1_0;
 use ash::{vk, Device, Entry, Instance};
 use std::ffi::{CString, CStr};
 use std::cell::RefCell;
@@ -195,7 +196,7 @@ impl InstanceBase {
         let device;
         {
 
-                        let device_extension_names_raw = [Swapchain::name().as_ptr()];
+            let device_extension_names_raw = [Swapchain::name().as_ptr()];
             let features = vk::PhysicalDeviceFeatures {
                 shader_clip_distance: 1,
                 ..Default::default()
@@ -507,13 +508,13 @@ impl InstanceBase {
 
     }
 
-    pub fn create_pipeline_state_object(&self, desc: PipelineStateObjectDescriptor
-    ) -> Box<PipelineStateObject>
-    {
-        Box::new(PipelineStateObject {
+    // pub fn create_pipeline_state_object(&self, desc: PipelineStateObjectDescriptor
+    // ) -> Box<PipelineStateObject>
+    // {
+    //     Box::new(PipelineStateObject {
 
-        })
-    }
+    //     })
+    // }
 
 }
 
@@ -618,6 +619,7 @@ macro_rules! offset_of {
         }
     }};
 }
+
 
 pub fn record_submit_commandbuffer<D: DeviceV1_0, F: FnOnce(&D, vk::CommandBuffer)>(
     device: &D,
