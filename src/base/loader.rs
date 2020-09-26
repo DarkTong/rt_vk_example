@@ -5,25 +5,35 @@ use std::path::Path;
 use std::process::Command;
 
 const GLSLANG_VALIDATOR: &str = "glslangValidator";
-const INCLUDE_PATH: &str = "../shader/";
+const INCLUDE_PATH: &str = "./shader/";
 
-pub fn LoadShader(device: &Device, path: &str)
--> vk::ShaderModule
+pub fn load_shader(device: &Device, path: &str)
+-> Result<vk::ShaderModule, String>
 {
     // todo：检查文件是否更改，再生成spv
-    glsl_to_spv(path);
+    if !glsl_to_spv(path) {
+        return Err(format!("failed to create spv file, {:?}", path));
+    }
 
     let spv_path = get_spv_path(path);
-    let bytes = std::fs::read(&path)
-        .expect(&format!("open file {:?} failed", spv_path));
+    let bytes = match std::fs::read(&spv_path) {
+        Ok(t) => t,
+        Err(_e) => {
+            return Err(format!("failed to read spv file, {:?}", path));
+        }
+    };
     let mut spv_file = std::io::Cursor::new(bytes);
-    let code = read_spv(&mut spv_file)
-        .expect(&format!("failed to read shader spv file, {:?}", spv_path));
+    let code = match read_spv(&mut spv_file) {
+        Ok(t) => t,
+        Err(_e) => {
+            return Err(format!("failed to read_spv, {}:{}", path, _e));
+        }
+    };
     let ci = vk::ShaderModuleCreateInfo::builder()
         .code(&code);
     unsafe {
-        device.create_shader_module(&ci, None)
-            .expect(&format!("shader module error, {:?}", spv_path))
+        Ok(device.create_shader_module(&ci, None)
+            .expect(&format!("shader module error, {:?}", spv_path)))
     }
 }
 
@@ -34,6 +44,7 @@ fn get_spv_path(path: &str) -> String{
 fn glsl_to_spv(path: &str) -> bool{
     let obj = Path::new(path);
     if !obj.exists(){
+        println!("current dir: {:?}", std::env::current_dir());
         return false;
     }
 
@@ -43,8 +54,8 @@ fn glsl_to_spv(path: &str) -> bool{
         .arg(format!("-I{}", INCLUDE_PATH))
         .arg("-o")
         .arg(&spv_path)
-        .arg("-g")
-        .arg("-d")
+        // .arg("-g")
+        // .arg("-Od")
         .arg(path)
         .output()
         .expect(&format!("{:?} command failed to start", GLSLANG_VALIDATOR));
