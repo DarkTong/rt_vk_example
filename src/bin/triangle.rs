@@ -1,9 +1,7 @@
-use ash::util::*;
 use ash::vk;
 use std::default::Default;
 use std::ffi::CString;
 use std::mem;
-use std::mem::align_of;
 use rt_vk_example::offset_of;
 use rt_vk_example::base::world::*;
 use rt_vk_example::base::pso;
@@ -18,7 +16,7 @@ struct Vertex {
 fn main() 
 {
     println!("current dir: {:?}", std::env::current_dir());
-    let base = InstanceBase::new(InstanceCreateInfo {
+    let mut base = InstanceBase::new(InstanceCreateInfo {
         window_width: 1920,
         window_height: 1090,
         app_name: String::from("triangle"),
@@ -124,74 +122,7 @@ fn main()
             .collect::<Vec<vk::Framebuffer>>();
     }
 
-    let index_buffer_data = [0u32, 1, 2];
-    let index_buffer;
-    {
-        let ib_ci = vk::BufferCreateInfo::builder()
-            .size(std::mem::size_of_val(&index_buffer_data) as u64)
-            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE);
-        unsafe {
-            index_buffer = base.device
-                .create_buffer(&ib_ci, None)
-                .unwrap();
-        }
-    }
-    let index_buffer_memory;
-    {
-        let ib_memory_req;
-        unsafe {
-            ib_memory_req = base.device.get_buffer_memory_requirements(index_buffer);
-        }
-        let ib_memory_index = find_memorytype_index(
-            &ib_memory_req, 
-            &base.device_memory_properties,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)
-            .unwrap();
-        let ib_memory_allocate_ci = vk::MemoryAllocateInfo {
-            allocation_size: ib_memory_req.size,
-            memory_type_index: ib_memory_index,
-            ..Default::default()
-        };
-        
-        unsafe {
-            index_buffer_memory = base
-                .device
-                .allocate_memory(&ib_memory_allocate_ci, None)
-                .unwrap();
-        } 
-    }
-    // write data to index buffer
-    {
-        let ib_memory_req;
-        unsafe {
-            ib_memory_req = base.device.get_buffer_memory_requirements(index_buffer);
-        }
-        let mut index_slice: Align<u32>;
-        unsafe {
-            let index_ptr;
-            index_ptr = base.device
-                .map_memory(index_buffer_memory, 0, 
-                    ib_memory_req.size,
-                    vk::MemoryMapFlags::empty())
-                .unwrap();
-
-            index_slice = Align::new(
-                index_ptr,
-                align_of::<u32>() as u64,
-                ib_memory_req.size
-            );
-        }
-
-        index_slice.copy_from_slice(&index_buffer_data)
-    }
-    // bind index buffer memory to index buffer
-    unsafe {
-        base.device.unmap_memory(index_buffer_memory);
-        base.device.bind_buffer_memory(index_buffer, index_buffer_memory, 0)
-            .unwrap();
-    }
-
+    // vertex buffer
     let vertices;
     {
         vertices = [
@@ -209,69 +140,14 @@ fn main()
             },
         ];
     }
-    let vertex_input_buffer;
-    let vertex_input_buffer_memory;
-    unsafe {
-        let vb_ci = vk::BufferCreateInfo {
-            size: (vertices.len() * std::mem::size_of::<Vertex>()) as u64,
-            usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            ..Default::default()
-        };
-
-        let vb = base.device
-            .create_buffer(&vb_ci, None)
-            .unwrap();
-        
-        let vb_m_req = base.device.get_buffer_memory_requirements(vb);
-        let vb_mi = find_memorytype_index(
-            &vb_m_req, 
-            &base.device_memory_properties, 
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT)
-            .unwrap();
-        let vb_mai = vk::MemoryAllocateInfo {
-            allocation_size: vb_m_req.size,
-            memory_type_index: vb_mi,
-            ..Default::default()
-        };
-        let vb_m = base.device
-            .allocate_memory(&vb_mai, None)
-            .unwrap();
-
-        vertex_input_buffer = vb;
-        vertex_input_buffer_memory = vb_m;
-    }
-    // write data to vertex input buffer
-    {
-        let mut vb_slice;
-        unsafe {
-            let vb_m_req = base.device.get_buffer_memory_requirements(vertex_input_buffer);
-            let vb_ptr = base.device
-                .map_memory(
-                    vertex_input_buffer_memory, 
-                    0, 
-                    vb_m_req.size, 
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap();
-            
-            vb_slice = Align::new(
-                vb_ptr, 
-                align_of::<Vertex>() as u64, 
-                vb_m_req.size
-            ) as Align<Vertex>;
-        }
-        vb_slice.copy_from_slice(&vertices);
-    }
-    // bind vertex input mrmory to buffer
-    unsafe {
-        base.device.unmap_memory(vertex_input_buffer_memory);
-        base.device.bind_buffer_memory(
-            vertex_input_buffer, 
-            vertex_input_buffer_memory, 
-            0)
-            .unwrap();
-    }
+    let vb_size = (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
+    let mut vb = base.allocate_vertex_buffer::<Vertex>(vb_size);
+    vb.slice.copy_from_slice(&vertices);
+    // index buffer
+    let ib_data = [0u32, 1, 2];
+    let ib_size = (ib_data.len() * std::mem::size_of::<u32>()) as u64;
+    let mut ib = base.allocate_index_buffer(ib_size);
+    ib.slice.copy_from_slice(&ib_data);
 
     // render loop
     base.render_loop(|| {
@@ -342,18 +218,18 @@ fn main()
                 device.cmd_bind_vertex_buffers(
                     draw_command_buffer, 
                     0,
-                    &[vertex_input_buffer],
-                    &[0]
+                    &[base.vertex_buffer.buffer],
+                    &[vb.offset]
                 );
                 device.cmd_bind_index_buffer(
-                    draw_command_buffer, 
-                    index_buffer, 
-                    0,
+                    draw_command_buffer,
+                    base.index_buffer.buffer,
+                    ib.offset,
                     vk::IndexType::UINT32
                 );
                 device.cmd_draw_indexed(
-                    draw_command_buffer, 
-                    index_buffer_data.len() as u32, 
+                    draw_command_buffer,
+                    ib_size as u32,
                     1,
                     0,
                     0,
@@ -382,10 +258,6 @@ fn main()
     unsafe {
         base.device.device_wait_idle().unwrap();
         drop(pso);
-        base.device.free_memory(index_buffer_memory, None);
-        base.device.destroy_buffer(index_buffer, None);
-        base.device.free_memory(vertex_input_buffer_memory, None);
-        base.device.destroy_buffer(vertex_input_buffer, None);
         for framebuffer in frame_buffers {
             base.device.destroy_framebuffer(framebuffer, None);
         }

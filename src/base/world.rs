@@ -13,6 +13,12 @@ use std::ffi::{CString, CStr};
 use std::cell::RefCell;
 use super::pso::*;
 use super::loader;
+use super::buffer;
+
+static VERTEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
+static INDEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
+static UNIFORM_BUFFER_SIZE: u64 = 1024 * 1024;
+
 
 pub struct InstanceBase {
     pub events_loop: RefCell<winit::EventsLoop>,
@@ -42,6 +48,10 @@ pub struct InstanceBase {
     pub setup_command_buffer: vk::CommandBuffer,
     pub present_complete_semaphore: vk::Semaphore,
     pub rendering_complete_semaphore: vk::Semaphore,
+    // buffer
+    pub index_buffer: buffer::DeviceBuffer,
+    pub vertex_buffer: buffer::DeviceBuffer,
+    pub uniform_buffer: buffer::DeviceBuffer,
 }
 
 pub struct InstanceCreateInfo {
@@ -439,6 +449,41 @@ impl InstanceBase {
             draw_command_buffer = command_buffers[1];
         }
 
+        // buffer
+        let vertex_buffer_ci = vk::BufferCreateInfo::builder()
+            .size(VERTEX_BUFFER_SIZE )
+            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let vertex_buffer = buffer::DeviceBuffer::new(
+            &device,
+            &device_memory_properties,
+            &vertex_buffer_ci,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+        let index_buffer_ci = vk::BufferCreateInfo::builder()
+            .size(INDEX_BUFFER_SIZE)
+            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let index_buffer = buffer::DeviceBuffer::new(
+            &device,
+            &device_memory_properties,
+            &index_buffer_ci,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+        let uniform_buffer_ci = vk::BufferCreateInfo::builder()
+            .size(UNIFORM_BUFFER_SIZE)
+            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let uniform_buffer = buffer::DeviceBuffer::new(
+            &device,
+            &device_memory_properties,
+            &uniform_buffer_ci,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+
         record_submit_commandbuffer(
             &device,
             setup_command_buffer,
@@ -504,6 +549,9 @@ impl InstanceBase {
             draw_command_buffer: draw_command_buffer,
             present_complete_semaphore: present_complete_semaphore,
             rendering_complete_semaphore: rendering_complete_semaphore,
+            vertex_buffer,
+            index_buffer,
+            uniform_buffer,
         }
 
     }
@@ -677,7 +725,19 @@ impl InstanceBase {
         }))
     }
 
+    pub fn allocate_vertex_buffer<T>(&mut self, size: u64)
+        -> buffer::BufferSlice<T>
+    {
+        self.vertex_buffer.allocate::<T>(size)
+    }
+
+    pub fn allocate_index_buffer<T>(&mut self, size: u64)
+        -> buffer::BufferSlice<T>
+    {
+        self.index_buffer.allocate::<T>(size)
+    }
 }
+
 
 impl Drop for InstanceBase {
     fn drop(&mut self) {
