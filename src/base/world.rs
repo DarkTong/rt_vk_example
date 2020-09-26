@@ -451,7 +451,7 @@ impl InstanceBase {
                     image: depth_image,
                     dst_access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
                         | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                    new_layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+                    new_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                     old_layout: vk::ImageLayout::UNDEFINED,
                     subresource_range: vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::DEPTH,
