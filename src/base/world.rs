@@ -21,10 +21,8 @@ static UNIFORM_BUFFER_SIZE: u64 = 1024 * 1024;
 
 
 pub struct InstanceBase {
-    pub events_loop: RefCell<winit::EventsLoop>,
     pub entry: Entry,
     pub instance: Instance,
-    pub window: winit::Window,
     pub debug_utils_loader: DebugUtils,
     pub debug_call_back: vk::DebugUtilsMessengerEXT,
     pub surface : vk::SurfaceKHR,
@@ -55,51 +53,15 @@ pub struct InstanceBase {
 }
 
 pub struct InstanceCreateInfo {
-    pub window_width: u32,
-    pub window_height: u32,
     pub app_name: String
 }
 
 impl InstanceBase {
-    pub fn render_loop<F: Fn()>(&self, f:F) {
-        use winit::*;
-        self.events_loop.borrow_mut().run_forever(|event| {
-            f();
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::KeyboardInput {input, ..} => {
-                        if let Some(VirtualKeyCode::Escape) = input.virtual_keycode {
-                            ControlFlow::Break
-                        } else {
-                            ControlFlow::Continue
-                        }
-                    },
-                    WindowEvent::CloseRequested => ControlFlow::Break,
-                    _ => ControlFlow::Continue,
-                },
-                _ => ControlFlow::Continue,
-            }
-        });
-
-    }
-
-    pub fn new(create_info: InstanceCreateInfo) -> Self {
-        let events_loop = winit::EventsLoop::new();
+    pub fn new(create_info: &InstanceCreateInfo, window: &winit::Window) -> Self {
         let entry = Entry::new().unwrap();
-       
-        let window; 
-        {
-            window = winit::WindowBuilder::new()
-            .with_title("window-title")
-            .with_dimensions(winit::dpi::LogicalSize::new(
-                f64::from(create_info.window_width),
-                f64::from(create_info.window_height)))
-            .build(&events_loop)
-            .unwrap();
-        }
         let instance: Instance;
         {
-            let app_name = CString::new(create_info.app_name).unwrap();
+            let app_name = CString::new(create_info.app_name.clone()).unwrap();
             let layer_names = [CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
             // let layer_names_raw: Vec<*const i8>;
             let layer_names_raw = layer_names
@@ -108,7 +70,7 @@ impl InstanceBase {
                 .collect::<Vec<*const i8>>();
 
             let extension_name_raw;
-            let mut surface_extensions = ash_window::enumerate_required_extensions(&window).unwrap();
+            let mut surface_extensions = ash_window::enumerate_required_extensions(window).unwrap();
             surface_extensions.push(&DebugUtils::name());
             extension_name_raw = surface_extensions.iter()
                 .map(|ext| ext.as_ptr())
@@ -522,10 +484,8 @@ impl InstanceBase {
         );
 
         InstanceBase {
-            events_loop: RefCell::new(events_loop),
             entry: entry,
             instance: instance,
-            window: window,
             debug_utils_loader: debug_utils_loader,
             debug_call_back: debug_callback,
             surface: surface,
