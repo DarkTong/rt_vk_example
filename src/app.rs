@@ -1,10 +1,10 @@
 pub use winit;
 use crate::base::world;
-use crate::base::world::{InstanceBase, InstanceCreateInfo};
+use crate::base::world::{Backend, InstanceCreateInfo};
 
 pub struct App {
     pub window: winit::Window,
-    pub instance_base: world::InstanceBase,
+    pub backend: world::Backend,
 }
 
 pub struct AppConfig {
@@ -17,53 +17,35 @@ pub struct AppCreateInfo
     pub app_name: String,
     pub title: String,
     pub events_loop: winit::EventsLoop,
-    pub width: f64,
-    pub height: f64,
+    pub width: f32,
+    pub height: f32,
 }
 
-static mut s_app: Option<Box<App>> = None;
-static s_app_config: AppConfig = AppConfig {
-    win_width: 800.0,
-    win_height: 600.0,
-};
-
-fn create_app(ci: &AppCreateInfo) -> Box<App> {
+pub fn create_app(ci: &AppCreateInfo) -> App {
     let window = winit::WindowBuilder::new()
         .with_title(&ci.title)
         .with_dimensions(
             winit::dpi::LogicalSize::new(
-                ci.width, ci.height
+                ci.width as f64,
+                ci.height as f64
             )
         )
         .build(&ci.events_loop)
         .unwrap();
-    let inst_base_ci = InstanceCreateInfo {app_name: ci.app_name.clone()};
-    let instance_base = InstanceBase::new(&inst_base_ci);
+    let inst_base_ci = InstanceCreateInfo {
+        app_name: ci.app_name.clone(),
+        window_height: ci.height,
+        window_width: ci.width,
+    };
+    let backend = Backend::new(&inst_base_ci, &window);
 
-    Box::new(App {
-        window: window,
-        instance_base: instance_base,
-    })
+    App {
+        window,
+        backend,
+    }
 }
 
 /// output method
-
-pub fn get_app() -> &'static Box<App> {
-    unsafe {
-        &s_app.unwrap()
-    }
-}
-
-pub fn reset_app(ci: &AppCreateInfo)
-{
-    let app = create_app(ci);
-    unsafe {
-        s_app.replace(app).unwrap();
-    }
-}
-
-
-pub fn get_app_config() -> &'static AppConfig { &s_app_config }
 
 pub fn render_loop<F: Fn()>(event_loop: &mut winit::EventsLoop, render:F) {
     pub use winit::*;

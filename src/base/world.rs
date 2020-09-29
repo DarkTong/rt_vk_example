@@ -10,7 +10,6 @@ pub use ash::version::*;
 pub use ash::version::DeviceV1_0;
 use ash::{vk, Device, Entry, Instance};
 use std::ffi::{CString, CStr};
-use std::cell::RefCell;
 use super::pso::*;
 use super::loader;
 use super::buffer;
@@ -20,7 +19,7 @@ static INDEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
 static UNIFORM_BUFFER_SIZE: u64 = 1024 * 1024;
 
 
-pub struct InstanceBase {
+pub struct Backend {
     pub entry: Entry,
     pub instance: Instance,
     pub debug_utils_loader: DebugUtils,
@@ -53,10 +52,12 @@ pub struct InstanceBase {
 }
 
 pub struct InstanceCreateInfo {
-    pub app_name: String
+    pub app_name: String,
+    pub window_height: f32,
+    pub window_width: f32
 }
 
-impl InstanceBase {
+impl Backend {
     pub fn new(create_info: &InstanceCreateInfo, window: &winit::Window) -> Self {
         let entry = Entry::new().unwrap();
         let instance: Instance;
@@ -117,7 +118,7 @@ impl InstanceBase {
         let surface;
         unsafe {
             surface = ash_window::create_surface(
-                &entry, &instance, &window, None)
+                &entry, &instance, window, None)
                 .unwrap();
         }
         let surface_loader = Surface::new(&entry, &instance);
@@ -224,8 +225,8 @@ impl InstanceBase {
             }
             surface_resolution = match surface_capabilities.current_extent.width {
                 std::u32::MAX => vk::Extent2D {
-                    width: create_info.window_width,
-                    height: create_info.window_height,
+                    width: create_info.window_width as u32,
+                    height: create_info.window_height as u32,
                 },
                 _ => surface_capabilities.current_extent
             };
@@ -483,7 +484,7 @@ impl InstanceBase {
             },
         );
 
-        InstanceBase {
+        Backend {
             entry: entry,
             instance: instance,
             debug_utils_loader: debug_utils_loader,
@@ -699,7 +700,7 @@ impl InstanceBase {
 }
 
 
-impl Drop for InstanceBase {
+impl Drop for Backend {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();

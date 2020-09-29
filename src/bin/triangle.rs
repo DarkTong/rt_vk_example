@@ -2,6 +2,7 @@ use ash::vk;
 use std::default::Default;
 use std::ffi::CString;
 use std::mem;
+use rt_vk_example::app;
 use rt_vk_example::offset_of;
 use rt_vk_example::base::world::*;
 use rt_vk_example::base::pso;
@@ -16,16 +17,21 @@ struct Vertex {
 fn main() 
 {
     println!("current dir: {:?}", std::env::current_dir());
-    let mut base = InstanceBase::new(InstanceCreateInfo {
-        window_width: 1920,
-        window_height: 1090,
-        app_name: String::from("triangle"),
-    });
+    let mut app_ci = app::AppCreateInfo {
+        app_name: "triangle".to_string(),
+        title: "triangle".to_string(),
+        events_loop: winit::EventsLoop::new(),
+        width: 1920.0,
+        height: 1080.0,
+    };
+    let exp_app = app::create_app(&app_ci);
+    let mut backend = exp_app.backend;
+
 
     // attachment
     let render_attachment = vec![
         vk::AttachmentDescription {
-            format: base.surface_format.format,
+            format: backend.surface_format.format,
             samples: vk::SampleCountFlags::TYPE_1,
             load_op: vk::AttachmentLoadOp::CLEAR,
             store_op: vk::AttachmentStoreOp::STORE,
@@ -78,41 +84,41 @@ fn main()
         attachment_desc: render_attachment, // move
         viewports: vec![vk::Viewport {
             x: 0.0, y: 0.0,
-            width: base.surface_resolution.width as f32,
-            height: base.surface_resolution.height as f32,
+            width: backend.surface_resolution.width as f32,
+            height: backend.surface_resolution.height as f32,
             min_depth: 0.0,
             max_depth: 1.0,
         }],
         scissors: vec![vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
             extent: vk::Extent2D {
-                width: base.surface_resolution.width,
-                height: base.surface_resolution.height
+                width: backend.surface_resolution.width,
+                height: backend.surface_resolution.height
             }
         }],
         input_binding_desc: vert_input_binding_desc,
         input_attr_desc: vert_input_attr_desc,
     };
-    let pso = base.create_pipeline_state_object(&pso_desc)
+    let pso = backend.create_pipeline_state_object(&pso_desc)
         .expect("create pso failed");
 
     // frame buffer
     let frame_buffers;
     {
-        frame_buffers = base
+        frame_buffers = backend
             .present_image_views
             .iter()
             .map(|&present_image_view| {
-                let framebuffer_attachment = [present_image_view, base.depth_image_view];
+                let framebuffer_attachment = [present_image_view, backend.depth_image_view];
                 let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
                     .render_pass(pso.render_pass)
                     .attachments(&framebuffer_attachment)
-                    .width(base.surface_resolution.width)
-                    .height(base.surface_resolution.height)
+                    .width(backend.surface_resolution.width)
+                    .height(backend.surface_resolution.height)
                     .layers(1);
                 
                 unsafe {
-                    return base.device
+                    return backend.device
                         .create_framebuffer(
                             &framebuffer_create_info, None)
                         .unwrap();
@@ -141,24 +147,24 @@ fn main()
         ];
     }
     let vb_size = (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
-    let mut vb = base.allocate_vertex_buffer::<Vertex>(vb_size);
+    let mut vb = backend.allocate_vertex_buffer::<Vertex>(vb_size);
     vb.slice.copy_from_slice(&vertices);
     // index buffer
     let ib_data = [0u32, 1, 2];
     let ib_size = (ib_data.len() * std::mem::size_of::<u32>()) as u64;
-    let mut ib = base.allocate_index_buffer(ib_size);
+    let mut ib = backend.allocate_index_buffer(ib_size);
     ib.slice.copy_from_slice(&ib_data);
 
     // render loop
-    base.render_loop(|| {
+    app::render_loop(&mut app_ci.events_loop, || {
         let present_index;
         unsafe {
-            let (_present_index, _) = base
+            let (_present_index, _) = backend
                 .swapchain_loader
                 .acquire_next_image(
-                    base.swapchain,
-                    std::u64::MAX, 
-                    base.present_complete_semaphore, 
+                    backend.swapchain,
+                    std::u64::MAX,
+                    backend.present_complete_semaphore,
                     vk::Fence::null())
                 .unwrap();
             present_index = _present_index;
@@ -183,17 +189,17 @@ fn main()
             .framebuffer(frame_buffers[present_index as usize])
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D{ x: 0, y: 0},
-                extent: base.surface_resolution,
+                extent: backend.surface_resolution,
             })
             .clear_values(&clear_values);
 
         record_submit_commandbuffer(
-            &base.device, 
-            base.draw_command_buffer, 
-            base.present_queue, 
-            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT], 
-            &[base.present_complete_semaphore], 
-            &[base.rendering_complete_semaphore], 
+            &backend.device,
+            backend.draw_command_buffer,
+            backend.present_queue,
+            &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+            &[backend.present_complete_semaphore],
+            &[backend.rendering_complete_semaphore],
             |device, draw_command_buffer| unsafe {
                 device.cmd_begin_render_pass(
                     draw_command_buffer, 
@@ -216,14 +222,14 @@ fn main()
                     &pso.pso_desc.scissors,
                 );
                 device.cmd_bind_vertex_buffers(
-                    draw_command_buffer, 
+                    draw_command_buffer,
                     0,
-                    &[base.vertex_buffer.buffer],
+                    &[backend.vertex_buffer.buffer],
                     &[vb.offset]
                 );
                 device.cmd_bind_index_buffer(
                     draw_command_buffer,
-                    base.index_buffer.buffer,
+                    backend.index_buffer.buffer,
                     ib.offset,
                     vk::IndexType::UINT32
                 );
@@ -239,8 +245,8 @@ fn main()
             },
         );
 
-        let wait_semaphore = [base.rendering_complete_semaphore];
-        let swapchains = [base.swapchain];
+        let wait_semaphore = [backend.rendering_complete_semaphore];
+        let swapchains = [backend.swapchain];
         let image_indices = [present_index];
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(&wait_semaphore)
@@ -248,18 +254,18 @@ fn main()
             .image_indices(&image_indices);
         
         unsafe {
-            base.swapchain_loader
-                .queue_present(base.present_queue, &present_info)
+            backend.swapchain_loader
+                .queue_present(backend.present_queue, &present_info)
                 .unwrap();
         }
 
     });
 
     unsafe {
-        base.device.device_wait_idle().unwrap();
+        backend.device.device_wait_idle().unwrap();
         drop(pso);
         for framebuffer in frame_buffers {
-            base.device.destroy_framebuffer(framebuffer, None);
+            backend.device.destroy_framebuffer(framebuffer, None);
         }
     }
 
