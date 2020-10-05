@@ -1,7 +1,9 @@
 use ash;
 use ash::vk;
-use ash::version::DeviceV1_0;
-use crate::base::world::find_memorytype_index;
+use ash::version::{DeviceV1_0, InstanceV1_0};
+use crate::base::ri;
+use crate::base::utility::find_memorytype_index;
+use std::rc;
 
 static BUFFER_ALIGN: u64 = 4; // 4 bytes
 pub struct DeviceBuffer {
@@ -112,4 +114,84 @@ pub struct BufferSlice<T> {
     pub slice: ash::util::Align<T>,
 }
 
+pub struct BufferManagerSystem {
+    pub index_buf_size: u64,
+    pub index_buffer: DeviceBuffer,
+    pub vertex_buf_size: u64,
+    pub vertex_buffer: DeviceBuffer,
+    pub uniform_buf_size: u64,
+    pub uniform_buffer: DeviceBuffer,
+}
+
+impl BufferManagerSystem {
+
+    pub fn new(backend: &rc::Rc<ri::Backend>, vertex_buf_size: vk::DeviceSize,
+               index_buf_size: vk::DeviceSize, uniform_buf_size: vk::DeviceSize)
+        -> BufferManagerSystem
+    {
+        let device_memory_properties = unsafe {
+            backend.instance.get_physical_device_memory_properties(backend.physical_device)
+        };
+        // buffer
+        let vertex_buffer_ci = vk::BufferCreateInfo::builder()
+            .size(vertex_buf_size)
+            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let vertex_buffer = DeviceBuffer::new(
+            &backend.device,
+            &device_memory_properties,
+            &vertex_buffer_ci,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+        let index_buffer_ci = vk::BufferCreateInfo::builder()
+            .size(index_buf_size)
+            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let index_buffer = DeviceBuffer::new(
+            &backend.device,
+            &device_memory_properties,
+            &index_buffer_ci,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+        let uniform_buffer_ci = vk::BufferCreateInfo::builder()
+            .size(uniform_buf_size)
+            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+        let uniform_buffer = DeviceBuffer::new(
+            &backend.device,
+            &device_memory_properties,
+            &uniform_buffer_ci,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+        BufferManagerSystem {
+            index_buf_size,
+            index_buffer,
+            vertex_buf_size,
+            vertex_buffer,
+            uniform_buf_size,
+            uniform_buffer
+        }
+    }
+
+    pub fn allocate_vertex_buffer<T>(&mut self, size: u64)
+        -> BufferSlice<T>
+    {
+        self.vertex_buffer.allocate::<T>(size)
+    }
+
+    pub fn allocate_index_buffer<T>(&mut self, size: u64)
+        -> BufferSlice<T>
+    {
+        self.index_buffer.allocate::<T>(size)
+    }
+
+    pub fn allocate_uniform_buffer<T>(&mut self, size: u64)
+        -> BufferSlice<T>
+    {
+        self.uniform_buffer.allocate::<T>(size)
+    }
+}
 
