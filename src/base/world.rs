@@ -13,6 +13,8 @@ use std::ffi::{CString, CStr};
 use super::pso::*;
 use super::loader;
 use super::buffer;
+use crate::base::buffer::BufferManagerSystem;
+use std::cell::RefCell;
 
 static VERTEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
 static INDEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
@@ -45,10 +47,6 @@ pub struct Backend {
     pub setup_command_buffer: vk::CommandBuffer,
     pub present_complete_semaphore: vk::Semaphore,
     pub rendering_complete_semaphore: vk::Semaphore,
-    // buffer
-    pub index_buffer: buffer::DeviceBuffer,
-    pub vertex_buffer: buffer::DeviceBuffer,
-    pub uniform_buffer: buffer::DeviceBuffer,
 }
 
 pub struct InstanceCreateInfo {
@@ -167,7 +165,6 @@ impl Backend {
         }
         let device;
         {
-
             let device_extension_names_raw = [Swapchain::name().as_ptr()];
             let features = vk::PhysicalDeviceFeatures {
                 shader_clip_distance: 1,
@@ -412,41 +409,6 @@ impl Backend {
             draw_command_buffer = command_buffers[1];
         }
 
-        // buffer
-        let vertex_buffer_ci = vk::BufferCreateInfo::builder()
-            .size(VERTEX_BUFFER_SIZE )
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .build();
-        let vertex_buffer = buffer::DeviceBuffer::new(
-            &device,
-            &device_memory_properties,
-            &vertex_buffer_ci,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        );
-        let index_buffer_ci = vk::BufferCreateInfo::builder()
-            .size(INDEX_BUFFER_SIZE)
-            .usage(vk::BufferUsageFlags::INDEX_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .build();
-        let index_buffer = buffer::DeviceBuffer::new(
-            &device,
-            &device_memory_properties,
-            &index_buffer_ci,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        );
-        let uniform_buffer_ci = vk::BufferCreateInfo::builder()
-            .size(UNIFORM_BUFFER_SIZE)
-            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .build();
-        let uniform_buffer = buffer::DeviceBuffer::new(
-            &device,
-            &device_memory_properties,
-            &uniform_buffer_ci,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        );
-
         record_submit_commandbuffer(
             &device,
             setup_command_buffer,
@@ -510,9 +472,6 @@ impl Backend {
             draw_command_buffer: draw_command_buffer,
             present_complete_semaphore: present_complete_semaphore,
             rendering_complete_semaphore: rendering_complete_semaphore,
-            vertex_buffer,
-            index_buffer,
-            uniform_buffer,
         }
 
     }
@@ -686,19 +645,7 @@ impl Backend {
         }))
     }
 
-    pub fn allocate_vertex_buffer<T>(&mut self, size: u64)
-        -> buffer::BufferSlice<T>
-    {
-        self.vertex_buffer.allocate::<T>(size)
-    }
-
-    pub fn allocate_index_buffer<T>(&mut self, size: u64)
-        -> buffer::BufferSlice<T>
-    {
-        self.index_buffer.allocate::<T>(size)
-    }
 }
-
 
 impl Drop for Backend {
     fn drop(&mut self) {
