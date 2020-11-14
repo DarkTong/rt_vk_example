@@ -7,6 +7,7 @@ use rt_vk_example::offset_of;
 use rt_vk_example::base::world::*;
 use rt_vk_example::base::pso;
 use rt_vk_example::base::pso::ShaderProgramDescriptor;
+use std::cell::RefCell;
 
 #[derive(Clone, Debug, Copy)]
 struct Vertex {
@@ -17,16 +18,16 @@ struct Vertex {
 fn main() 
 {
     println!("current dir: {:?}", std::env::current_dir());
-    let mut app_ci = app::AppCreateInfo {
+    let app_ci = app::AppCreateInfo {
         app_name: "triangle".to_string(),
         title: "triangle".to_string(),
-        events_loop: winit::EventsLoop::new(),
         width: 1920.0,
         height: 1080.0,
     };
-    let exp_app = app::create_app(&app_ci);
-    let mut backend = exp_app.backend;
-
+    let exp_app = RefCell::new(app::App::new(&app_ci));
+    let bro_exp_app = exp_app.borrow();
+    let backend = bro_exp_app.backend.borrow();
+    let mut mut_backend = bro_exp_app.backend.borrow_mut();
 
     // attachment
     let render_attachment = vec![
@@ -147,16 +148,16 @@ fn main()
         ];
     }
     let vb_size = (vertices.len() * std::mem::size_of::<Vertex>()) as u64;
-    let mut vb = backend.allocate_vertex_buffer::<Vertex>(vb_size);
+    let mut vb = mut_backend.allocate_vertex_buffer::<Vertex>(vb_size);
     vb.slice.copy_from_slice(&vertices);
     // index buffer
     let ib_data = [0u32, 1, 2];
     let ib_size = (ib_data.len() * std::mem::size_of::<u32>()) as u64;
-    let mut ib = backend.allocate_index_buffer(ib_size);
+    let mut ib = mut_backend.allocate_index_buffer(ib_size);
     ib.slice.copy_from_slice(&ib_data);
 
     // render loop
-    app::render_loop(&mut app_ci.events_loop, || {
+    bro_exp_app.render_loop(|| {
         let present_index;
         unsafe {
             let (_present_index, _) = backend
