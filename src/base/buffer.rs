@@ -125,7 +125,7 @@ pub struct BufferManagerSystem {
 
 impl BufferManagerSystem {
 
-    pub fn new(backend: &rc::Rc<ri::Backend>, vertex_buf_size: vk::DeviceSize,
+    pub fn new(backend: &ri::Backend, vertex_buf_size: vk::DeviceSize,
                index_buf_size: vk::DeviceSize, uniform_buf_size: vk::DeviceSize)
         -> BufferManagerSystem
     {

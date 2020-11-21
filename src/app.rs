@@ -3,14 +3,17 @@ use ash::vk;
 use ash::version::*;
 use crate::base::ri;
 use crate::base::buffer;
-use std::rc;
-use std;
 use std::time;
 use std::boxed;
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+
 
 pub struct App {
     pub window: winit::Window,
-    pub backend: rc::Rc<ri::Backend>,
+    pub backend: RefCell<Rc<ri::Backend>>,
     pub surface: ri::Surface,
     pub buf_mgr_sys: buffer::BufferManagerSystem,
     // other
@@ -32,11 +35,11 @@ pub struct App {
     pub transfer_cmd_buffer: vk::CommandBuffer,
     pub graphic_submit_fence: vk::Fence,
     // property
-    frame_count: u64,
-    frame_timer: f64, //  一帧耗时(ms)
-    timer_scale: f64,
+    frame_count: Cell<u64>,
+    frame_timer: Cell<f64>, //  一帧耗时(ms)
+    timer_scale: Cell<f64>,
 
-    events_loop: winit::EventsLoop,
+    events_loop: RefCell<winit::EventsLoop>,
 }
 
 #[derive(Default)]
@@ -52,6 +55,10 @@ pub struct AppCreateInfo {
 static VERTEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
 static INDEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
 static UNIFORM_BUFFER_SIZE: u64 = 1024 * 1024;
+
+unsafe {
+pub static ins: RefCell<Option<App>> = RefCell::new(None);
+}
 
 impl App {
     pub fn new(ci: &AppCreateInfo) -> Self
@@ -69,7 +76,7 @@ impl App {
                 .build(&events_loop)
                 .unwrap()
         };
-        let backend = rc::Rc::new(ri::Backend::new(&window, 0));
+        let backend = Rc::new(ri::Backend::new(&window, 0));
         let surface = ri::Surface::new(backend.clone(), &window);
         let cmd_pool = unsafe {
             let pool_ci  = vk::CommandPoolCreateInfo {
@@ -134,13 +141,13 @@ impl App {
 
         App {
             window,
-            backend,
+            backend: RefCell::new(backend),
             surface,
             cmd_pool,
             present_complete,
             render_complete,
             render_loop_obj,
-            events_loop,
+            events_loop: RefCell::new(events_loop),
             buf_mgr_sys,
             graphic_queue_idx,
             graphic_queue,
@@ -152,9 +159,9 @@ impl App {
             transfer_queue,
             transfer_cmd_buffer,
             graphic_submit_fence,
-            frame_count: 0u64,
-            frame_timer: 0.0,
-            timer_scale: 1.0,
+            frame_count: Cell::new(0u64),
+            frame_timer: Cell::new(0.0),
+            timer_scale: Cell::new(1.0),
         }
     }
 
@@ -167,7 +174,7 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
-            let device = &self.backend.device;
+            let device = &self.backend.borrow().device;
             device.device_wait_idle();
             device.destroy_command_pool(self.cmd_pool, None);
             device.destroy_semaphore(self.present_complete, None);
@@ -179,19 +186,19 @@ impl Drop for App {
 
 
 pub trait RenderLoopAction {
-    fn acquire_next_image(&mut self) -> u32;
-    fn render_loop(&mut self);
-    fn render_frame(&mut self);
+    fn acquire_next_image(& self) -> u32;
+    fn render_loop(&self);
+    fn render_frame(&self);
     fn submit_frame(&mut self);
 }
 
 pub trait RenderLoop {
-    fn render(&mut self, app_obj: &mut App);
-    fn update(&mut self, app_obj: &mut App, delta_time: f64);
+    fn render(&self, app_obj: &App);
+    fn update(&self, app_obj: &App, delta_time: f64);
 }
 
 impl RenderLoopAction for App {
-    fn acquire_next_image(&mut self) -> u32
+    fn acquire_next_image(&self) -> u32
     {
         let ret = unsafe {
             self.surface.swapchain.acquire_next_image(
@@ -216,12 +223,12 @@ impl RenderLoopAction for App {
         }
     }
 
-    fn render_loop(&mut self)
+    fn render_loop(&self)
     {
         pub use winit::*;
-        self.events_loop.run_forever(|event| {
+        self.events_loop.borrow_mut().run_forever(|event| {
             // do render action
-            // self.render_frame();
+            self.render_frame();
 
             // solve window event
             match event {
@@ -241,15 +248,15 @@ impl RenderLoopAction for App {
         })
     }
 
-    fn render_frame(&mut self)
+    fn render_frame(&self)
     {
         let t_start = time::Instant::now().elapsed().as_micros();
         self.render_loop_obj.render(self);
-        self.frame_count += 1u64;
+        self.frame_count.set(self.frame_count.get() + 1u64);
         let t_end = time::Instant::now().elapsed().as_micros();
         let t_diff = (t_end - t_start) as f64;
-        self.frame_timer = t_diff / 1000.0;
-        self.render_loop_obj.update(self, self.frame_timer);
+        self.frame_timer.set(t_diff / 1000.0);
+        self.render_loop_obj.update(self, self.frame_timer.take());
     }
 
     fn submit_frame(&mut self)
@@ -263,7 +270,7 @@ impl RenderLoopAction for App {
         unsafe {
             match self.surface.swapchain.queue_present(self.graphic_queue, &present_info_khr){
                 Ok(_) => {
-                    self.backend.device.queue_wait_idle(self.graphic_queue);
+                    self.backend.borrow().device.queue_wait_idle(self.graphic_queue);
                 },
                 Err(err_code) => {
                     match err_code {
@@ -281,7 +288,7 @@ impl RenderLoopAction for App {
 }
 
 impl RenderLoop for DefaultRenderLoop {
-    fn render(&mut self, app_obj: &mut App)
+    fn render(&self, app_obj: &App)
     {
         // self.prepare_frame();
         // let submit_info = vk::SubmitInfo::builder()
@@ -295,7 +302,7 @@ impl RenderLoop for DefaultRenderLoop {
         // };
     }
 
-    fn update(&mut self, app_obj: &mut App, delta_timer: f64)
+    fn update(&self, app_obj: &App, delta_timer: f64)
     {
     }
 

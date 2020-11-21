@@ -7,6 +7,8 @@ use ash::extensions::{
 use ash::version::*;
 use ash::vk;
 use std::ffi::{CString, CStr};
+use std::cell::Cell;
+use std::rc::Rc;
 
 pub struct Backend {
     pub entry: ash::Entry, // vulkan函数入口
@@ -27,7 +29,7 @@ pub struct Surface {
     pub swapchain_khr: vk::SwapchainKHR,
     pub present_images: Vec<vk::Image>,
     pub present_image_views: Vec<vk::ImageView>,
-    backend: std::rc::Rc<Backend>,
+    backend: Rc<Backend>,
 }
 
 impl Backend {
@@ -91,7 +93,7 @@ impl Backend {
             _p_d
         };
         let physical_device = {
-            assert!(select_gpu_idx >= physical_devices.len(),
+            assert!(select_gpu_idx < physical_devices.len(),
                     format!("Select physical device is error. sum is {}, select is {}",
                         physical_devices.len(), select_gpu_idx)
             );
@@ -162,14 +164,12 @@ impl Backend {
             self.instance.get_physical_device_queue_family_properties(self.physical_device)
         };
         let f_get_queue =
-            |support_flags: vk::QueueFlags,
-             ignore_flags: vk::QueueFlags| {
+            |support_flags: vk::QueueFlags| {
                 props.iter()
                     .enumerate()
                     .filter_map(|(idx, prop)| {
                         let prop_flags = &prop.queue_flags;
-                        match prop_flags.contains(support_flags)
-                            && !prop_flags.contains(ignore_flags) {
+                        match prop_flags.contains(support_flags) {
                             true => Some(idx),
                             false => None,
                         }
@@ -180,7 +180,7 @@ impl Backend {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::COMPUTE;
                 let ignore_flags = vk::QueueFlags::GRAPHICS & vk::QueueFlags::TRANSFER;
-                f_get_queue(support_flags, ignore_flags)
+                f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
                 return queue_idx.unwrap() as u32;
@@ -190,7 +190,7 @@ impl Backend {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::TRANSFER;
                 let ignore_flags = vk::QueueFlags::GRAPHICS & vk::QueueFlags::COMPUTE;
-                f_get_queue(support_flags, ignore_flags)
+                f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
                 return queue_idx.unwrap() as u32;
@@ -200,7 +200,7 @@ impl Backend {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::GRAPHICS;
                 let ignore_flags = vk::QueueFlags::COMPUTE & vk::QueueFlags::TRANSFER;
-                f_get_queue(support_flags, ignore_flags)
+                f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
                 return queue_idx.unwrap() as u32;
@@ -209,8 +209,7 @@ impl Backend {
         if flags.contains(vk::QueueFlags::GRAPHICS) {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::GRAPHICS;
-                let ignore_flags = vk::QueueFlags::empty();
-                f_get_queue(support_flags, ignore_flags)
+                f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
                 return queue_idx.unwrap() as u32;
@@ -232,7 +231,7 @@ impl Drop for Backend {
 }
 
 impl Surface {
-    pub fn new(backend: std::rc::Rc<Backend>, window: &winit::Window)
+    pub fn new(backend: Rc<Backend>, window: &winit::Window)
         -> Self
     {
         let surface_khr = unsafe {

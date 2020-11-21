@@ -17,7 +17,6 @@ struct Vertex {
     color: [f32; 4],
 }
 
-#[derive(Default)]
 struct TriangleRenderLoop {
     pub device: ash::Device,
     pub render_pass: vk::RenderPass,
@@ -28,7 +27,7 @@ struct TriangleRenderLoop {
 }
 
 impl app::RenderLoop for TriangleRenderLoop {
-    fn render(&mut self, app_obj: &mut app::App)
+    fn render(&self, app_obj: &app::App)
     {
         let present_idx = app_obj.acquire_next_image() as usize;
         if present_idx >= self.frame_buffers.len() {
@@ -55,7 +54,7 @@ impl app::RenderLoop for TriangleRenderLoop {
                 .build()
         };
 
-        let device = &app_obj.backend.device;
+        let device = &app_obj.backend.borrow().device;
         let cmd_buf = app_obj.graphic_cmd_buffer;
         unsafe {
             device.cmd_begin_render_pass(
@@ -92,7 +91,7 @@ impl app::RenderLoop for TriangleRenderLoop {
             );
             device.cmd_draw_indexed(
                 cmd_buf,
-                ib.size,
+                self.ib.size as u32,
                 1, 0, 0, 1
             );
             device.cmd_end_render_pass(
@@ -101,7 +100,7 @@ impl app::RenderLoop for TriangleRenderLoop {
         }
     }
 
-    fn update(&mut self, app_obj: &mut app::App, delta_time: f64)
+    fn update(&self, app_obj: &app::App, delta_time: f64)
     {
 
     }
@@ -111,9 +110,9 @@ impl Drop for TriangleRenderLoop {
     fn drop(&mut self)
     {
         unsafe {
-            for framebuffer in self.frame_buffers {
-                self.device.destroy_framebuffer(framebuffer, None);
-            }
+            self.frame_buffers.iter().map(|framebuffer|{
+                self.device.destroy_framebuffer(*framebuffer, None);
+            }).next();
         }
     }
 }
@@ -128,7 +127,6 @@ fn main()
         height: 600.0,
     };
     let mut app_obj = app::App::new(&app_ci);
-    app_obj.render_loop_obj = boxed::Box::new(TriangleRenderLoop::default());
 
     // attachment
     let render_attachment = {
@@ -207,7 +205,7 @@ fn main()
         input_binding_desc: vert_input_binding_desc,
         input_attr_desc: vert_input_attr_desc,
     };
-    let pso_obj = utility::create_pipeline_state_object(&app_obj.backend, &pso_desc)
+    let pso_obj = utility::create_pipeline_state_object(&app_obj.backend.borrow(), &pso_desc)
         .expect("create pso failed");
     // frame buffer
     let frame_buffers = {
@@ -224,7 +222,7 @@ fn main()
                     .layers(1);
                 
                 unsafe {
-                    app_obj.backend.device
+                    app_obj.backend.borrow().device
                         .create_framebuffer(
                             &framebuffer_create_info, None)
                         .unwrap()
@@ -261,8 +259,8 @@ fn main()
 
     let triangle_rl = {
         TriangleRenderLoop {
-            device: app_obj.backend.device.clone(),
-            render_pass,
+            device: app_obj.backend.borrow().device.clone(),
+            render_pass: pso_obj.render_pass,
             frame_buffers,
             pso_obj,
             vb,
