@@ -22,15 +22,12 @@ pub struct App {
     pub render_complete: vk::Semaphore,
     pub render_loop_obj: boxed::Box<dyn RenderLoop>,
     // graphic queue info
-    pub graphic_queue_idx: u32,
     pub graphic_queue: vk::Queue,
     pub graphic_cmd_buffer: vk::CommandBuffer,
     // compute queue info
-    pub compute_queue_idx: u32,
     pub compute_queue: vk::Queue,
     pub compute_cmd_buffer: vk::CommandBuffer,
     // transfer
-    pub transfer_queue_idx: u32,
     pub transfer_queue: vk::Queue,
     pub transfer_cmd_buffer: vk::CommandBuffer,
     pub graphic_submit_fence: vk::Fence,
@@ -56,9 +53,6 @@ static VERTEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
 static INDEX_BUFFER_SIZE: u64 = 4 * 1024 * 1024;
 static UNIFORM_BUFFER_SIZE: u64 = 1024 * 1024;
 
-unsafe {
-pub static ins: RefCell<Option<App>> = RefCell::new(None);
-}
 
 impl App {
     pub fn new(ci: &AppCreateInfo) -> Self
@@ -106,17 +100,14 @@ impl App {
                 UNIFORM_BUFFER_SIZE,
             )
         };
-        let graphic_queue_idx = backend.get_queue_family_index(vk::QueueFlags::GRAPHICS);
         let graphic_queue = unsafe {
-            backend.device.get_device_queue(backend.queue_family_index, graphic_queue_idx)
+            backend.device.get_device_queue(backend.queue_family_index, 0)
         };
-        let compute_queue_idx = backend.get_queue_family_index(vk::QueueFlags::COMPUTE);
         let compute_queue = unsafe {
-            backend.device.get_device_queue(backend.queue_family_index, compute_queue_idx)
+            backend.device.get_device_queue(backend.queue_family_index, 0)
         };
-        let transfer_queue_idx = backend.get_queue_family_index(vk::QueueFlags::TRANSFER);
         let transfer_queue = unsafe {
-            backend.device.get_device_queue(backend.queue_family_index, compute_queue_idx)
+            backend.device.get_device_queue(backend.queue_family_index, 0)
         };
         let (graphic_cmd_buffer,
             compute_cmd_buffer,
@@ -149,13 +140,10 @@ impl App {
             render_loop_obj,
             events_loop: RefCell::new(events_loop),
             buf_mgr_sys,
-            graphic_queue_idx,
             graphic_queue,
             graphic_cmd_buffer,
-            compute_queue_idx,
             compute_queue,
             compute_cmd_buffer,
-            transfer_queue_idx,
             transfer_queue,
             transfer_cmd_buffer,
             graphic_submit_fence,

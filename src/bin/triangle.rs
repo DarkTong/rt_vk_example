@@ -207,6 +207,57 @@ fn main()
     };
     let pso_obj = utility::create_pipeline_state_object(&app_obj.backend.borrow(), &pso_desc)
         .expect("create pso failed");
+    // create color image
+    let color_image_ci = vk::ImageCreateInfo {
+        image_type: vk::ImageType::TYPE_2D,
+        format: app_obj.surface.surface_format.format,
+        extent: vk::Extent3D {
+            width: app_obj.surface.surface_resolution.width,
+            height: app_obj.surface.surface_resolution.height,
+            depth: 1,
+        },
+        mip_levels: 1,
+        array_layers: 1,
+        samples: vk::SampleCountFlags::TYPE_1,
+        tiling: vk::ImageTiling::OPTIMAL,
+        usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+        sharing_mode: vk::SharingMode::EXCLUSIVE,
+        ..Default::default()
+    };
+    let depth_image_ci = vk::ImageCreateInfo {
+        image_type: vk::ImageType::TYPE_2D,
+        format: vk::Format::D16_UNORM,
+        extent: vk::Extent3D {
+            width: app_obj.surface.surface_resolution.width,
+            height: app_obj.surface.surface_resolution.height,
+            depth: 1,
+        },
+        mip_levels: 1,
+        array_layers: 1,
+        samples: vk::SampleCountFlags::TYPE_1,
+        tiling: vk::ImageTiling::OPTIMAL,
+        usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+        sharing_mode: vk::SharingMode::EXCLUSIVE,
+        ..Default::default()
+    };
+    let color_image = unsafe {
+        app_obj.backend.borrow()
+            .device
+            .create_image(&color_image_ci, None)
+            .unwrap()
+    };
+    let depth_image = unsafe {
+        app_obj.backend.borrow()
+            .device
+            .create_image(&depth_image_ci, None)
+            .unwrap()
+    };
+    let color_image_view_ci = vk::ImageViewCreateInfo {
+        view_type: vk::ImageViewType::TYPE_2D,
+        fla
+    };
+
+        
     // frame buffer
     let frame_buffers = {
         app_obj.surface

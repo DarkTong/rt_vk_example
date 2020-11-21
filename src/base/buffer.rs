@@ -3,7 +3,8 @@ use ash::vk;
 use ash::version::{DeviceV1_0, InstanceV1_0};
 use crate::base::ri;
 use crate::base::utility::find_memorytype_index;
-use std::rc;
+use std::cell::RefCell;
+use std::ffi::c_void;
 
 static BUFFER_ALIGN: u64 = 4; // 4 bytes
 pub struct DeviceBuffer {
@@ -12,6 +13,7 @@ pub struct DeviceBuffer {
     pub device: ash::Device,
     size: u64,
     offset: u64,
+    buffer_ptr: *mut c_void,
 }
 
 impl DeviceBuffer {
@@ -45,9 +47,19 @@ impl DeviceBuffer {
         }
         // bind memory to buffer
         unsafe {
-            device.unmap_memory(memory);
+            // device.unmap_memory(memory);
             device.bind_buffer_memory(buffer, memory, 0).unwrap();
         }
+
+
+        let buffer_ptr = unsafe {
+            device.map_memory(
+                memory,
+                0,
+                buffer_ci.size,
+                vk::MemoryMapFlags::empty()
+            ).unwrap()
+        };
 
         DeviceBuffer {
             buffer,
@@ -55,6 +67,7 @@ impl DeviceBuffer {
             device: device.clone(),
             size: buffer_ci.size,
             offset: 0,
+            buffer_ptr,
         }
     }
 
@@ -70,23 +83,15 @@ impl DeviceBuffer {
         assert!(new_offset <= self.size, "buffer size is over");
         self.offset = new_offset;
         let truth_size = self.offset - start;
-        let slice;
-        unsafe {
-            let buf_ptr = self.device
-                .map_memory(
-                    self.memory,
-                    start,
-                    truth_size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap();
-
-            slice = ash::util::Align::new(
+        // buffer_ptr已绑定memory，所以buf_ptr记录指针的偏移，方便后续写入数据。
+        let slice = unsafe {
+            let buf_ptr = self.buffer_ptr.wrapping_offset(start as isize);
+            ash::util::Align::<T>::new(
                 buf_ptr,
-                std::mem::align_of::<T>() as u64,
+                BUFFER_ALIGN,
                 truth_size
-            ) as ash::util::Align<T>;
-        }
+            )
+        };
         BufferSlice {
             buffer: self.buffer,
             offset: start,
@@ -99,6 +104,8 @@ impl DeviceBuffer {
 impl Drop for DeviceBuffer {
     fn drop(&mut self) {
         unsafe {
+            self.device.unmap_memory(self.memory);
+            self.buffer_ptr = std::ptr::null_mut();
             self.device.free_memory(self.memory, None);
             self.device.destroy_buffer(self.buffer, None);
         }

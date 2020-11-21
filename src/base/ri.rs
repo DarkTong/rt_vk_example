@@ -7,7 +7,6 @@ use ash::extensions::{
 use ash::version::*;
 use ash::vk;
 use std::ffi::{CString, CStr};
-use std::cell::Cell;
 use std::rc::Rc;
 
 pub struct Backend {
@@ -16,13 +15,13 @@ pub struct Backend {
     pub debug_utils: ext::DebugUtils,
     pub debug_callback: vk::DebugUtilsMessengerEXT,
     pub physical_device: vk::PhysicalDevice,
+    pub surface_khr: vk::SurfaceKHR,
+    pub surface: khr::Surface,
     pub queue_family_index: u32,
     pub device: ash::Device,
 }
 
 pub struct Surface {
-    pub surface: khr::Surface,
-    pub surface_khr: vk::SurfaceKHR,
     pub surface_format: vk::SurfaceFormatKHR,
     pub surface_resolution: vk::Extent2D,
     pub swapchain: khr::Swapchain,
@@ -99,7 +98,37 @@ impl Backend {
             );
             physical_devices[select_gpu_idx]
         };
-        let queue_family_index = select_gpu_idx as u32;
+        let surface_khr = unsafe {
+            ash_window::create_surface(
+                &entry, &instance, window, None
+            ).unwrap()
+        };
+        let surface = khr::Surface::new(&entry, &instance);
+        let graphic_queue_family_index = unsafe {
+            instance.get_physical_device_queue_family_properties(physical_device)
+                .iter()
+                .enumerate()
+                .filter_map(|(index, ref info)|{
+                    let supports_graphic_and_surface =
+                        info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                            && surface
+                                .get_physical_device_surface_support(
+                                    physical_device,
+                                    index as u32,
+                                    surface_khr,
+                                )
+                                .unwrap();
+                    if supports_graphic_and_surface {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+                .unwrap()
+                as u32
+        };
+
         let device = {
             let device_extension_names_raw = [khr::Swapchain::name().as_ptr()];
             let features = vk::PhysicalDeviceFeatures {
@@ -108,7 +137,7 @@ impl Backend {
             };
             let priorities = [1.0];
             let queue_create_infos = [vk::DeviceQueueCreateInfo::builder()
-                .queue_family_index(queue_family_index)
+                .queue_family_index(graphic_queue_family_index)
                 .queue_priorities(&priorities)
                 .build(),
             ];
@@ -129,7 +158,9 @@ impl Backend {
             debug_utils,
             debug_callback,
             physical_device,
-            queue_family_index,
+            surface_khr,
+            surface,
+            queue_family_index: graphic_queue_family_index,
             device
         }
     }
@@ -179,7 +210,7 @@ impl Backend {
         if flags.contains(vk::QueueFlags::COMPUTE) {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::COMPUTE;
-                let ignore_flags = vk::QueueFlags::GRAPHICS & vk::QueueFlags::TRANSFER;
+                // let ignore_flags = vk::QueueFlags::GRAPHICS & vk::QueueFlags::TRANSFER;
                 f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
@@ -189,7 +220,7 @@ impl Backend {
         else if flags.contains(vk::QueueFlags::TRANSFER) {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::TRANSFER;
-                let ignore_flags = vk::QueueFlags::GRAPHICS & vk::QueueFlags::COMPUTE;
+                // let ignore_flags = vk::QueueFlags::GRAPHICS & vk::QueueFlags::COMPUTE;
                 f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
@@ -199,7 +230,7 @@ impl Backend {
         else if flags.contains(vk::QueueFlags::GRAPHICS) {
             let queue_idx = {
                 let support_flags = vk::QueueFlags::GRAPHICS;
-                let ignore_flags = vk::QueueFlags::COMPUTE & vk::QueueFlags::TRANSFER;
+                // let ignore_flags = vk::QueueFlags::COMPUTE & vk::QueueFlags::TRANSFER;
                 f_get_queue(support_flags)
             };
             if queue_idx.is_some() {
@@ -226,6 +257,7 @@ impl Drop for Backend {
             self.device.destroy_device(None);
             self.debug_utils.destroy_debug_utils_messenger(self.debug_callback, None);
             self.instance.destroy_instance(None);
+            self.surface.destroy_surface(self.surface_khr, None)
         }
     }
 }
@@ -234,15 +266,11 @@ impl Surface {
     pub fn new(backend: Rc<Backend>, window: &winit::Window)
         -> Self
     {
-        let surface_khr = unsafe {
-            ash_window::create_surface(
-                &backend.entry, &backend.instance, window, None
-            ).unwrap()
-        };
-        let surface = khr::Surface::new(&backend.entry, &backend.instance);
+        let surface = &backend.surface;
+        let surface_khr = backend.surface_khr.clone();
         let surface_format = {
             let surface_formats = unsafe {
-                surface
+                backend.surface
                     .get_physical_device_surface_formats(backend.physical_device, surface_khr)
                     .unwrap()
             };
@@ -336,8 +364,6 @@ impl Surface {
         };
 
         Surface {
-            surface,
-            surface_khr,
             surface_format,
             surface_resolution,
             swapchain,
@@ -358,7 +384,6 @@ impl Drop for Surface {
                 self.backend.device.destroy_image_view(image_view, None);
             }
             self.swapchain.destroy_swapchain(self.swapchain_khr, None);
-            self.surface.destroy_surface(self.surface_khr, None)
         }
     }
 }

@@ -1,0 +1,8 @@
+# rust类型解析
+**T是基本类型**
+let a: T = ..;              // 在栈上创建
+let a: Box<T> = ..;         // 在堆上创建，不可共享，类似unique_ptr。要求创建的时候赋值，没有nullptr对象，除非T自己实现nullptr对象。编译期间最多只能存在一个mut引用。
+let a: Rc<T> = ..;          // 在堆上创建，可共享，类似share_ptr。同上。同上。
+let a: Arc<T> = ..;         // 同上，线程安全版。
+let a: Cell<T> = ..;
+let a: RefCell<T> = ..;     // 在堆上创建，可共享，类似share_ptr。同上。编译是可同时存在多个mut引用，但运行时只能有一个？
