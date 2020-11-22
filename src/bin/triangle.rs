@@ -254,12 +254,45 @@ fn main()
     };
     let color_image_view_ci = vk::ImageViewCreateInfo {
         view_type: vk::ImageViewType::TYPE_2D,
-        fla
+        image: color_image,
+        format: color_image_ci.format,
+        ..Default::default()
+    };
+    let depth_image_view_ci = vk::ImageViewCreateInfo {
+        view_type: vk::ImageViewType::TYPE_2D,
+        image: color_image,
+        format: color_image_ci.format,
+        ..Default::default()
+    };
+    let color_view = unsafe {
+        app_obj.backend.borrow().device
+            .create_image_view(&color_image_view_ci, None)
+            .unwrap()
+    };
+    let depth_view = unsafe {
+        app_obj.backend.borrow().device
+            .create_image_view(&depth_image_view_ci, None)
+            .unwrap()
     };
 
+    let frame_buffer = {
+        let framebuffer_attachments = [color_view, depth_view];
+        let fb_ci = vk::FramebufferCreateInfo::builder()
+            .render_pass(pso_obj.render_pass)
+            .attachments(&framebuffer_attachments)
+            .width(app_obj.surface.surface_resolution.width)
+            .height(app_obj.surface.surface_resolution.height)
+            .layers(1);
+        unsafe {
+            app_obj.backend.borrow().device
+                .create_framebuffer(
+                    &fb_ci, None
+                ).unwrap()
+        }
+    };
         
     // frame buffer
-    let frame_buffers = {
+    let screen_frame_buffers = {
         app_obj.surface
             .present_image_views
             .iter()
