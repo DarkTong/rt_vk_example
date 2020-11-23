@@ -2,6 +2,7 @@ pub use winit;
 use ash::vk;
 use ash::version::*;
 use crate::base::ri;
+use crate::base::surface;
 use crate::base::buffer;
 use std::time;
 use std::boxed;
@@ -14,7 +15,7 @@ use std::rc::Rc;
 pub struct App {
     pub window: winit::Window,
     pub backend: RefCell<Rc<ri::Backend>>,
-    pub surface: ri::Surface,
+    pub surface: surface::Surface,
     pub buf_mgr_sys: buffer::BufferManagerSystem,
     // other
     pub cmd_pool: vk::CommandPool,
@@ -71,7 +72,7 @@ impl App {
                 .unwrap()
         };
         let backend = Rc::new(ri::Backend::new(&window, 0));
-        let surface = ri::Surface::new(backend.clone(), &window);
+        let surface = surface::Surface::new(backend.clone(), &window);
         let cmd_pool = unsafe {
             let pool_ci  = vk::CommandPoolCreateInfo {
                 flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,

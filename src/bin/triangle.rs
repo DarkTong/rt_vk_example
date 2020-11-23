@@ -20,17 +20,98 @@ struct Vertex {
 struct TriangleRenderLoop {
     pub device: ash::Device,
     pub render_pass: vk::RenderPass,
-    pub frame_buffers: Vec<vk::Framebuffer>,
+    pub frame_buffer: vk::Framebuffer,
     pub pso_obj: boxed::Box<pso::PipelineStateObject>,
     pub vb: buffer::BufferSlice<Vertex>,
     pub ib: buffer::BufferSlice<u16>,
+    pub scr_vb: buffer::BufferSlice<f32>,
+    pub scr_ib: buffer::BufferSlice<u16>,
+}
+
+impl TriangleRenderLoop {
+    fn render_screen(&self, app_obj: &app::App)
+    {
+        let present_idx = app_obj.acquire_next_image() as usize;
+
+        if present_idx >= app_obj.surface.surface_frame_buffers.len() {
+            return;
+        }
+
+        let clear_values = {
+            [
+                vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 0.0],
+                    }
+                },
+            ]
+        };
+
+        let render_pass_begin_info = {
+            vk::RenderPassBeginInfo::builder()
+                .render_pass(app_obj.surface.surface_pso_obj.render_pass)
+                .clear_values(&clear_values)
+                .framebuffer(app_obj.surface.surface_frame_buffers[present_idx])
+                .render_area(vk::Rect2D {
+                    offset: vk::Offset2D{x: 0, y: 0},
+                    extent: app_obj.surface.surface_resolution,
+                })
+                .build()
+        };
+
+        let device = &app_obj.backend.borrow().device;
+        let cmd_buf = app_obj.graphic_cmd_buffer;
+
+        unsafe {
+            device.cmd_begin_render_pass(
+                cmd_buf,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE
+            );
+            device.cmd_bind_pipeline(
+                cmd_buf,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pso_obj.pipeline
+            );
+            device.cmd_set_viewport(
+                cmd_buf,
+                0,
+                &self.pso_obj.pso_desc.viewports,
+            );
+            device.cmd_set_scissor(
+                cmd_buf,
+                0,
+                &self.pso_obj.pso_desc.scissors
+            );
+            device.cmd_bind_vertex_buffers(
+                cmd_buf,
+                0,
+                &[app_obj.buf_mgr_sys.vertex_buffer.buffer],
+                &[self.scr_vb.offset],
+            );
+            device.cmd_bind_index_buffer(
+                cmd_buf,
+                app_obj.buf_mgr_sys.index_buffer.buffer,
+                self.scr_ib.offset,
+                vk::IndexType::UINT16
+            );
+            device.cmd_draw_indexed(
+                cmd_buf,
+                self.scr_ib.size as u32,
+                1, 0, 0, 1
+            );
+            device.cmd_end_render_pass(
+                cmd_buf,
+            );
+        }
+    }
 }
 
 impl app::RenderLoop for TriangleRenderLoop {
     fn render(&self, app_obj: &app::App)
     {
         let present_idx = app_obj.acquire_next_image() as usize;
-        if present_idx >= self.frame_buffers.len() {
+        if present_idx >= app_obj.surface.surface_frame_buffers.len() {
             return;
         }
         let clear_values = {
@@ -46,7 +127,7 @@ impl app::RenderLoop for TriangleRenderLoop {
             vk::RenderPassBeginInfo::builder()
                 .render_pass(self.render_pass)
                 .clear_values(&clear_values)
-                .framebuffer(self.frame_buffers[present_idx])
+                .framebuffer(self.frame_buffer)
                 .render_area(vk::Rect2D {
                     offset: vk::Offset2D{x: 0, y: 0},
                     extent: app_obj.surface.surface_resolution,
@@ -98,21 +179,22 @@ impl app::RenderLoop for TriangleRenderLoop {
                 cmd_buf,
             );
         }
+
+        self.render_screen(app_obj);
     }
 
     fn update(&self, app_obj: &app::App, delta_time: f64)
     {
 
     }
+
 }
 
 impl Drop for TriangleRenderLoop {
     fn drop(&mut self)
     {
         unsafe {
-            self.frame_buffers.iter().map(|framebuffer|{
-                self.device.destroy_framebuffer(*framebuffer, None);
-            }).next();
+            self.device.destroy_framebuffer(self.frame_buffer, None);
         }
     }
 }
@@ -260,8 +342,8 @@ fn main()
     };
     let depth_image_view_ci = vk::ImageViewCreateInfo {
         view_type: vk::ImageViewType::TYPE_2D,
-        image: color_image,
-        format: color_image_ci.format,
+        image: depth_image,
+        format: depth_image_ci.format,
         ..Default::default()
     };
     let color_view = unsafe {
@@ -290,31 +372,7 @@ fn main()
                 ).unwrap()
         }
     };
-        
-    // frame buffer
-    let screen_frame_buffers = {
-        app_obj.surface
-            .present_image_views
-            .iter()
-            .map(|&present_image_view| {
-                let framebuffer_attachments = [present_image_view];
-                let framebuffer_create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(pso_obj.render_pass)
-                    .attachments(&framebuffer_attachments)
-                    .width(app_obj.surface.surface_resolution.width)
-                    .height(app_obj.surface.surface_resolution.height)
-                    .layers(1);
-                
-                unsafe {
-                    app_obj.backend.borrow().device
-                        .create_framebuffer(
-                            &framebuffer_create_info, None)
-                        .unwrap()
-                }
 
-            })
-            .collect::<Vec<vk::Framebuffer>>()
-    };
     // vertex buffer
     let vertices= {
          vec![
@@ -341,14 +399,30 @@ fn main()
     let mut ib = app_obj.buf_mgr_sys.allocate_index_buffer(ib_size);
     ib.slice.copy_from_slice(&ib_data);
 
+    // scr vertex buffer
+    let scr_vertices = [
+        0.0, 0.0,
+        1.0, 0.0,
+        1.1, 1.1,
+        0.0, 1.0,
+    ];
+    let mut scr_vb = app_obj.buf_mgr_sys.allocate_vertex_buffer::<f32>(vb_size);
+    scr_vb.slice.copy_from_slice(&scr_vertices);
+
+    let scr_ib_data = [0u16, 1, 2, 0, 2, 3];
+    let mut scr_ib = app_obj.buf_mgr_sys.allocate_index_buffer(6);
+    scr_ib.slice.copy_from_slice(&scr_ib_data);
+
     let triangle_rl = {
         TriangleRenderLoop {
             device: app_obj.backend.borrow().device.clone(),
             render_pass: pso_obj.render_pass,
-            frame_buffers,
+            frame_buffer,
             pso_obj,
             vb,
             ib,
+            scr_vb,
+            scr_ib,
         }
     };
     app_obj.render_loop_obj = boxed::Box::new(triangle_rl);
